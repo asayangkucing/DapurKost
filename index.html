@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DapurKost Putri - Smart Pantry & Kost Manager</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Canvas Confetti for recipe success animation -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
+    
+    <!-- Firebase SDK Modular Imports (Versi 11.6.1 yang stabil) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBDjMG2Jjcya2y0NNeFM3-GP53rs6SIKv8",
+            authDomain: "dapurkost-23495.firebaseapp.com",
+            projectId: "dapurkost-23495",
+            storageBucket: "dapurkost-23495.firebasestorage.app",
+            messagingSenderId: "315122397193",
+            appId: "1:315122397193:web:15733bf7637b2e2c3048d8",
+            measurementId: "G-30V7H0RKM8"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        window.db = db;
+        window.collection = collection;
+        window.getDocs = getDocs;
+        window.addDoc = addDoc;
+        window.updateDoc = updateDoc;
+        window.deleteDoc = deleteDoc;
+        window.doc = doc;
+        window.setDoc = setDoc;
+
+        window.addEventListener('DOMContentLoaded', () => {
+            checkAuthSession();
+        });
+    </script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            200: '#bbf7d0',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            900: '#14532d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-900 via-emerald-950 to-teal-900 text-slate-800 min-h-screen flex flex-col">
+
+    <!-- Toast Notification Container (z-[60] agar selalu di depan modal login) -->
+    <div id="toast-container" class="fixed top-5 right-5 z-[60] flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- ================= LAYAR LOGIN ================= -->
+    <div id="auth-screen" class="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl border border-slate-100 space-y-6">
+            <div class="text-center space-y-2">
+                <div class="w-16 h-16 bg-brand-500 text-white rounded-2xl mx-auto flex items-center justify-center text-2xl shadow-lg">
+                    <i class="fa-solid fa-house-chimney-user"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-slate-900">DapurKost Putri</h2>
+                <p class="text-xs text-slate-500">Silakan login menggunakan akun terdaftar.</p>
+            </div>
+
+            <form onsubmit="handleLogin(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Username</label>
+                    <input type="text" id="login-username" required placeholder="Masukkan username" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Password</label>
+                    <input type="password" id="login-password" required placeholder="••••••••" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+                </div>
+                <button type="submit" class="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl transition-all shadow-md text-sm">
+                    Masuk ke Aplikasi <i class="fa-solid fa-arrow-right ml-1"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ================= APLIKASI UTAMA (TERSEMBUNYI SEBELUM LOGIN) ================= -->
+    <div id="main-app" class="hidden flex-col min-h-screen bg-slate-50">
+        <!-- Navigation Header -->
+        <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between h-16 items-center">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-brand-500 text-white flex items-center justify-center font-bold text-xl shadow-md">
+                        <i class="fa-solid fa-utensils"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-base text-slate-900 leading-tight">DapurKost Putri <span id="user-role-badge" class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-brand-100 text-brand-700">Penghuni</span></h1>
+                        <p id="user-welcome-text" class="text-xs text-slate-500">Halo, Pengguna</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="btn-manage-users" onclick="openUserModal()" class="hidden bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-2 rounded-xl transition-all">
+                        <i class="fa-solid fa-users-gear mr-1"></i> Kelola Penghuni
+                    </button>
+                    <button onclick="handleLogout()" class="bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-semibold px-3 py-2 rounded-xl transition-all">
+                        <i class="fa-solid fa-right-from-bracket mr-1"></i> Logout
+                    </button>
+                </div>
+            </div>
+            <!-- Navigation Tabs -->
+            <div class="bg-slate-50 border-t border-slate-200 px-4 sm:px-6 lg:px-8 flex gap-2 overflow-x-auto">
+                <button onclick="switchTab('home')" id="tab-btn-home" class="tab-btn py-3 px-4 font-bold text-xs border-b-2 border-brand-600 text-brand-700 whitespace-nowrap flex items-center gap-2">
+                    <i class="fa-solid fa-house"></i> Aturan & Tata Tertib
+                </button>
+                <button onclick="switchTab('pantry')" id="tab-btn-pantry" class="tab-btn py-3 px-4 font-semibold text-xs border-b-2 border-transparent text-slate-600 hover:text-slate-900 whitespace-nowrap flex items-center gap-2">
+                    <i class="fa-solid fa-boxes-packing"></i> Stok Pantry
+                </button>
+                <button onclick="switchTab('expiry')" id="tab-btn-expiry" class="tab-btn py-3 px-4 font-semibold text-xs border-b-2 border-transparent text-slate-600 hover:text-slate-900 whitespace-nowrap flex items-center gap-2">
+                    <i class="fa-solid fa-triangle-exclamation"></i> Expiry Tracker <span id="expiry-badge-count" class="hidden ml-1 px-1.5 py-0.2 bg-rose-600 text-white rounded-full text-[9px]">0</span>
+                </button>
+                <button onclick="switchTab('recipe')" id="tab-btn-recipe" class="tab-btn py-3 px-4 font-semibold text-xs border-b-2 border-transparent text-slate-600 hover:text-slate-900 whitespace-nowrap flex items-center gap-2">
+                    <i class="fa-solid fa-hat-chef"></i> Resep Kepepet
+                </button>
+                <button onclick="switchTab('expense')" id="tab-btn-expense" class="tab-btn py-3 px-4 font-semibold text-xs border-b-2 border-transparent text-slate-600 hover:text-slate-900 whitespace-nowrap flex items-center gap-2">
+                    <i class="fa-solid fa-receipt"></i> Patungan Dapur
+                </button>
+                <button onclick="switchTab('picket')" id="tab-btn-picket" class="tab-btn py-3 px-4 font-semibold text-xs border-b-2 border-transparent text-slate-600 hover:text-slate-900 whitespace-nowrap flex items-center gap-2">
+                    <i class="fa-solid fa-broom"></i> Jadwal Piket & Tugas
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content Body -->
+        <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+            
+            <!-- TAB 1: ATURAN & TATA TERTIB (HOME) -->
+            <div id="tab-home" class="tab-content space-y-6">
+                <!-- Banner Notifikasi Cepat Bahan Mau Expired -->
+                <div id="home-expiry-alert-box" class="hidden bg-rose-50 border border-rose-200 rounded-3xl p-5 text-rose-900 flex items-start gap-3 shadow-sm">
+                    <div class="w-10 h-10 rounded-2xl bg-rose-500 text-white flex items-center justify-center shrink-0">
+                        <i class="fa-solid fa-triangle-exclamation text-lg"></i>
+                    </div>
+                    <div class="space-y-1">
+                        <h4 class="font-bold text-sm">Peringatan Bahan Makanan Hampir Expired!</h4>
+                        <p id="home-expiry-alert-text" class="text-xs text-rose-700 leading-relaxed">Ada bahan makanan yang masa kadaluarsanya tinggal 1 hari lagi atau sudah lewat. Segera cek menu Expiry Tracker atau Resep Kepepet!</p>
+                    </div>
+                </div>
+
+                <div class="bg-gradient-to-r from-brand-600 to-teal-700 text-white rounded-3xl p-6 sm:p-8 shadow-md space-y-3">
+                    <span class="bg-white/20 text-white text-xs font-semibold px-3 py-1 rounded-full"><i class="fa-solid fa-bullhorn mr-1"></i> Pengumuman Ibu Kost</span>
+                    <h2 class="text-2xl font-bold">Selamat Datang di Dapur Bersama Kost Putri!</h2>
+                    <p class="text-xs sm:text-sm text-brand-50 leading-relaxed">
+                        Aplikasi ini dirancang khusus untuk kenyamanan kita bersama sesama penghuni kost. Mari jaga kebersihan, ketertiban, dan keharmonisan dapur kita. Silakan cek jadwal piket, catat tanggal kadaluarsa bahan makanan, atau gunakan resep kepepet saat lapar melanda!
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Tata Tertib Dapur & Kulkas -->
+                    <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+                        <h3 class="font-bold text-base text-slate-900 flex items-center gap-2">
+                            <i class="fa-solid fa-clipboard-list text-brand-600"></i> Tata Tertib Penggunaan Dapur
+                        </h3>
+                        <ul class="space-y-3 text-xs text-slate-600 leading-relaxed">
+                            <li class="flex items-start gap-2">
+                                <i class="fa-solid fa-circle-check text-brand-600 mt-0.5"></i>
+                                <span><strong>Cuci Langsung Alat Masak:</strong> Segera cuci piring, panci, atau wajan sesegera mungkin setelah selesai memasak. Jangan ditinggalkan menumpuk di sink.</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <i class="fa-solid fa-circle-check text-brand-600 mt-0.5"></i>
+                                <span><strong>Etika Kulkas Bersama:</strong> Beri label nama pada wadah makanan pribadi di dalam kulkas. Makanan yang berjamur atau lewat batas akan dibersihkan saat jadwal piket kulkas.</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <i class="fa-solid fa-circle-check text-brand-600 mt-0.5"></i>
+                                <span><strong>Kebersihan Kompor & Meja:</strong> Bersihkan cipratan minyak atau bumbu di kompor dan meja dapur setelah memasak selesai menggunakan lap yang telah disediakan.</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <i class="fa-solid fa-circle-check text-brand-600 mt-0.5"></i>
+                                <span><strong>Patungan Gas & Bumbu Dasar:</strong> Gas LPG dan bumbu dasar (garam, minyak, gula) dikelola bersama melalui menu Patungan Dapur. Harap patuh iuran tepat waktu ya dears!</span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Kontak & Info Penting -->
+                    <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+                        <h3 class="font-bold text-base text-slate-900 flex items-center gap-2">
+                            <i class="fa-solid fa-address-book text-brand-600"></i> Informasi & Kontak Penting
+                        </h3>
+                        <div class="space-y-3 text-xs text-slate-600">
+                            <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 flex items-center justify-between">
+                                <div>
+                                    <p class="font-bold text-slate-800">Ibu Kost (Pengelola)</p>
+                                    <p class="text-slate-500">Ibu Hajjah Siti Aminah</p>
+                                </div>
+                                <span class="bg-brand-100 text-brand-700 font-semibold px-2.5 py-1 rounded-xl">0812-3456-7890</span>
+                            </div>
+                            <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 flex items-center justify-between">
+                                <div>
+                                    <p class="font-bold text-slate-800">Nomor Darurat Keamanan / Air</p>
+                                    <p class="text-slate-500">Tukang Galon & Gas Langganan</p>
+                                </div>
+                                <span class="bg-slate-200 text-slate-700 font-semibold px-2.5 py-1 rounded-xl">0856-7890-1234</span>
+                            </div>
+                            <div class="bg-amber-50 border border-amber-200 p-3.5 rounded-2xl text-amber-900">
+                                <p class="font-bold"><i class="fa-solid fa-lightbulb mr-1"></i> Tips Hemat Anak Kost:</p>
+                                <p class="mt-0.5">Cek menu <strong>Resep Kepepet</strong> sebelum belanja ke luar, siapa tahu bahan di pantry bisa diolah jadi makanan enak!</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: STOK PANTRY -->
+            <div id="tab-pantry" class="tab-content hidden space-y-6">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h3 class="font-bold text-base text-slate-900"><i class="fa-solid fa-boxes-packing mr-2 text-brand-600"></i> Data Stok Pantry Bersama</h3>
+                        <p class="text-xs text-slate-500">Catat bahan makanan agar tidak beli ganda.</p>
+                    </div>
+                    <button onclick="openAddItemModal()" class="bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition-all shadow-sm">
+                        <i class="fa-solid fa-plus mr-1"></i> Tambah Bahan
+                    </button>
+                </div>
+                <div id="pantry-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <!-- Dinamis -->
+                </div>
+            </div>
+
+            <!-- TAB 3: EXPIRY TRACKER -->
+            <div id="tab-expiry" class="tab-content hidden space-y-6">
+                <div>
+                    <h3 class="font-bold text-base text-slate-900"><i class="fa-solid fa-triangle-exclamation mr-2 text-amber-600"></i> Peringatan Kadaluarsa (Expiry Tracker)</h3>
+                    <p class="text-xs text-slate-500">Pantau bahan makanan yang hampir basi di kulkas.</p>
+                </div>
+                <div id="expiry-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <!-- Dinamis -->
+                </div>
+            </div>
+
+            <!-- TAB 4: RESEP KEPEPET -->
+            <div id="tab-recipe" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+                    <h3 class="font-bold text-base text-slate-900"><i class="fa-solid fa-hat-chef mr-2 text-brand-600"></i> Generator Resep Kepepet Anak Kost</h3>
+                    <p class="text-xs text-slate-500">Pilih bahan yang tersedia di pantry Anda saat ini:</p>
+                    <div id="recipe-ingredient-checkboxes" class="flex flex-wrap gap-2">
+                        <!-- Checkbox dinamis dari pantry -->
+                    </div>
+                    <button onclick="generateRecipe()" class="bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold px-5 py-2.5 rounded-xl shadow-sm transition-all">
+                        <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Racik Resep Sekarang!
+                    </button>
+                </div>
+                <div id="recipe-result" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
+            </div>
+
+            <!-- TAB 5: PATUNGAN DAPUR -->
+            <div id="tab-expense" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-bold text-base text-slate-900"><i class="fa-solid fa-receipt mr-2 text-brand-600"></i> Kalkulator Patungan Dapur Bersama</h3>
+                        <button onclick="openAddExpenseModal()" class="bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold px-3 py-2 rounded-xl">
+                            <i class="fa-solid fa-plus mr-1"></i> Catat Belanja Baru
+                        </button>
+                    </div>
+                    <div id="expense-summary" class="bg-brand-50 border border-brand-200 p-4 rounded-2xl flex justify-between items-center text-xs text-brand-900">
+                        <!-- Dinamis total patungan -->
+                    </div>
+                    <div id="expense-list" class="space-y-2">
+                        <!-- Daftar belanja dinamis -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 6: JADWAL PIKET & TUGAS -->
+            <div id="tab-picket" class="tab-content hidden space-y-6">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h3 class="font-bold text-base text-slate-900"><i class="fa-solid fa-broom mr-2 text-brand-600"></i> Jadwal Piket & Tugas Bersama Kost</h3>
+                        <p class="text-xs text-slate-500">Kelola piket kebersihan dapur, kulkas, dan area bersama.</p>
+                    </div>
+                    <button onclick="openAddPicketModal()" class="bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-sm transition-all">
+                        <i class="fa-solid fa-plus mr-1"></i> Tambah Tugas Piket
+                    </button>
+                </div>
+                <div id="picket-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <!-- Dinamis -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- ================= MODAL KELOLA PENGHUNI (KHUSUS IBU KOST) ================= -->
+    <div id="modal-users" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-3xl max-w-xl w-full p-6 shadow-xl border border-slate-100 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center">
+                <h3 class="font-bold text-lg text-slate-800"><i class="fa-solid fa-users-gear mr-2 text-brand-600"></i> Kelola Akun Anak Kost</h3>
+                <button onclick="closeUserModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            
+            <form onsubmit="handleCreateUser(event)" class="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                <h4 class="font-bold text-xs text-slate-800 uppercase tracking-wider">Tambah Penghuni Baru</h4>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Nama Lengkap *</label>
+                        <input type="text" id="new-user-name" required placeholder="Misal: Rina Wati" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Nomor Kamar *</label>
+                        <input type="text" id="new-user-room" required placeholder="Misal: Kamar 05" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Username Login *</label>
+                        <input type="text" id="new-user-username" required placeholder="Misal: rina05" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Password *</label>
+                        <input type="text" id="new-user-password" required placeholder="Password login" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs">
+                    </div>
+                </div>
+                <button type="submit" class="w-full py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-xl shadow-sm">
+                    Simpan & Buat Akun Penghuni
+                </button>
+            </form>
+
+            <div class="space-y-2">
+                <h4 class="font-bold text-xs text-slate-800 uppercase tracking-wider">Daftar Penghuni Kost Terdaftar</h4>
+                <div id="users-list-container" class="space-y-2 max-h-48 overflow-y-auto">
+                    <!-- Dinamis list user -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= MODAL TAMBAH ITEM PANTRY ================= -->
+    <div id="modal-item" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-xl border border-slate-100">
+            <h3 class="font-bold text-lg text-slate-800 mb-4">Tambah Stok Bahan Pantry</h3>
+            <form id="form-item" onsubmit="handleSaveItem(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Nama Bahan *</label>
+                    <input type="text" id="item-name" required placeholder="Misal: Telur Ayam / Minyak Goreng" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Jumlah *</label>
+                        <input type="number" id="item-qty" min="1" value="1" required class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Satuan *</label>
+                        <input type="text" id="item-unit" placeholder="butir, kg, liter, bungkus" required class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Tanggal Kadaluarsa *</label>
+                    <input type="date" id="item-expiry" required class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                </div>
+                <div class="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                    <button type="button" onclick="closeModal('modal-item')" class="px-4 py-2 text-xs font-semibold text-slate-600">Batal</button>
+                    <button type="submit" class="px-4 py-2 text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-sm">Simpan Bahan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ================= MODAL TAMBAH BELANJA PATUNGAN ================= -->
+    <div id="modal-expense" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-xl border border-slate-100">
+            <h3 class="font-bold text-lg text-slate-800 mb-4">Catat Nota Belanja Patungan</h3>
+            <form onsubmit="handleSaveExpense(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Nama Keperluan / Barang *</label>
+                    <input type="text" id="exp-title" required placeholder="Misal: Gas 3kg & Sabun Cuci Piring" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Total Biaya (Rp) *</label>
+                    <input type="number" id="exp-amount" min="1000" required placeholder="Misal: 45000" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Dibeli Oleh *</label>
+                    <input type="text" id="exp-buyer" required placeholder="Nama / Kamar pembeli" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                </div>
+                <div class="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                    <button type="button" onclick="closeModal('modal-expense')" class="px-4 py-2 text-xs font-semibold text-slate-600">Batal</button>
+                    <button type="submit" class="px-4 py-2 text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-sm">Simpan Belanja</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ================= MODAL TAMBAH TUGAS PIKET ================= -->
+    <div id="modal-picket" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-xl border border-slate-100">
+            <h3 class="font-bold text-lg text-slate-800 mb-4">Tambah Jadwal Piket & Tugas Kost</h3>
+            <form onsubmit="handleSavePicket(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Nama Tugas / Area Piket *</label>
+                    <input type="text" id="pick-task" required placeholder="Misal: Bersihkan Kulkas Bersama / Sapu Lorong" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Penanggung Jawab / Penghuni *</label>
+                    <input type="text" id="pick-assignee" required placeholder="Misal: Rina (Kamar 05)" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Jadwal Hari *</label>
+                    <select id="pick-day" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                        <option value="Senin">Senin</option>
+                        <option value="Selasa">Selasa</option>
+                        <option value="Rabu">Rabu</option>
+                        <option value="Kamis">Kamis</option>
+                        <option value="Jumat">Jumat</option>
+                        <option value="Sabtu">Sabtu</option>
+                        <option value="Minggu">Minggu</option>
+                        <option value="Setiap Hari">Setiap Hari</option>
+                    </select>
+                </div>
+                <div class="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                    <button type="button" onclick="closeModal('modal-picket')" class="px-4 py-2 text-xs font-semibold text-slate-600">Batal</button>
+                    <button type="submit" class="px-4 py-2 text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-sm">Simpan Tugas</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ================= JAVASCRIPT LOGIC ================= -->
+    <script>
+        let currentUser = null;
+        let pantryItems = [
+            { id: '1', name: 'Telur Ayam', qty: 10, unit: 'butir', expiry: '2026-11-18' },
+            { id: '2', name: 'Minyak Goreng', qty: 1, unit: 'liter', expiry: '2026-12-30' },
+            { id: '3', name: 'Bawang Merah', qty: 500, unit: 'gram', expiry: '2026-11-13' },
+            { id: '4', name: 'Cabai Rawit', qty: 250, unit: 'gram', expiry: '2026-11-14' }
+        ];
+        let expenses = [
+            { id: '1', title: 'Gas LPG 3kg', amount: 22000, buyer: 'Siti (Kamar 01)' },
+            { id: '2', title: 'Sabun Cuci Piring Sunlight 1L', amount: 18000, buyer: 'Dewi (Kamar 03)' }
+        ];
+        let usersList = [
+            { id: 'u1', name: 'Ibu Hajjah Siti Aminah', room: 'Ibu Kost', username: 'ibukost', role: 'admin' },
+            { id: 'u2', name: 'Rina Wati', room: 'Kamar 01', username: 'rina01', role: 'tenant' },
+            { id: 'u3', name: 'Siti Rahma', room: 'Kamar 02', username: 'siti02', role: 'tenant' },
+            { id: 'u4', name: 'Dewi Lestari', room: 'Kamar 03', username: 'dewi03', role: 'tenant' }
+        ];
+        let pickets = [
+            { id: 'p1', task: 'Piket Kebersihan Dapur Umum', assignee: 'Rina Wati (Kamar 01)', day: 'Senin', status: 'Pending' },
+            { id: 'p2', task: 'Piket Bersihkan Kulkas Bersama', assignee: 'Siti Rahma (Kamar 02)', day: 'Rabu', status: 'Pending' },
+            { id: 'p3', task: 'Piket Sapu & Mengepel Lorong', assignee: 'Dewi Lestari (Kamar 03)', day: 'Jumat', status: 'Selesai' }
+        ];
+
+        function checkAuthSession() {
+            const savedUser = sessionStorage.getItem('dapurkost_user');
+            if (savedUser) {
+                currentUser = JSON.parse(savedUser);
+                startAppSession();
+            } else {
+                document.getElementById('auth-screen').classList.remove('hidden');
+                document.getElementById('main-app').classList.add('hidden');
+            }
+        }
+
+        // Login Handler yang sudah dihubungkan ke Firebase Firestore Database
+        async function handleLogin(e) {
+            e.preventDefault();
+            const u = document.getElementById('login-username').value.trim();
+            const p = document.getElementById('login-password').value.trim();
+
+            // Cek akun demo bawaan
+            if (u === 'ibukost' && p === 'admin123') {
+                currentUser = { name: 'Ibu Hajjah Siti Aminah', room: 'Pengelola Kost', username: 'ibukost', role: 'admin' };
+                sessionStorage.setItem('dapurkost_user', JSON.stringify(currentUser));
+                showToast('Login Berhasil!', 'success');
+                startAppSession();
+                return;
+            }
+
+            try {
+                const querySnapshot = await getDocs(collection(window.db, "users"));
+                let foundUser = null;
+                
+                querySnapshot.forEach((docSnap) => {
+                    const data = docSnap.data();
+                    if (data.username === u && data.password === p) {
+                        foundUser = data;
+                    }
+                });
+
+                if (foundUser) {
+                    currentUser = foundUser;
+                    sessionStorage.setItem('dapurkost_user', JSON.stringify(currentUser));
+                    showToast('Login Berhasil! Selamat datang.', 'success');
+                    startAppSession();
+                } else {
+                    showToast('Username atau Password salah!', 'error');
+                }
+            } catch (error) {
+                console.error("Error login:", error);
+                showToast('Gagal terhubung ke database.', 'error');
+            }
+        }
+
+        function startAppSession() {
+            document.getElementById('auth-screen').classList.add('hidden');
+            document.getElementById('main-app').classList.remove('hidden');
+            document.getElementById('main-app').classList.add('flex');
+
+            document.getElementById('user-welcome-text').innerText = `${currentUser.name} (${currentUser.room})`;
+            const badge = document.getElementById('user-role-badge');
+            const btnManage = document.getElementById('btn-manage-users');
+
+            if (currentUser.role === 'admin') {
+                badge.innerText = 'Ibu Kost (Admin)';
+                badge.className = 'text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800';
+                btnManage.classList.remove('hidden');
+            } else {
+                badge.innerText = 'Anak Kost (Penghuni)';
+                badge.className = 'text-[10px] font-semibold px-2 py-0.5 rounded-full bg-brand-100 text-brand-700';
+                btnManage.classList.add('hidden');
+            }
+
+            renderPantryGrid();
+            renderExpiryGrid();
+            renderRecipeCheckboxes();
+            renderExpenseList();
+            renderPicketGrid();
+            renderUsersList();
+            checkExpiryNotifications();
+        }
+
+        function handleLogout() {
+            sessionStorage.removeItem('dapurkost_user');
+            currentUser = null;
+            document.getElementById('auth-screen').classList.remove('hidden');
+            document.getElementById('main-app').classList.add('hidden');
+            document.getElementById('main-app').classList.remove('flex');
+            showToast('Berhasil logout dari sistem.', 'info');
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('border-brand-600', 'text-brand-700', 'font-bold');
+                el.classList.add('border-transparent', 'text-slate-600', 'font-semibold');
+            });
+
+            document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+            const activeBtn = document.getElementById(`tab-btn-${tabId}`);
+            activeBtn.classList.remove('border-transparent', 'text-slate-600', 'font-semibold');
+            activeBtn.classList.add('border-brand-600', 'text-brand-700', 'font-bold');
+        }
+
+        function checkExpiryNotifications() {
+            const today = new Date();
+            today.setHours(0,0,0,0);
+
+            let expiringSoonItems = [];
+
+            pantryItems.forEach(item => {
+                const expDate = new Date(item.expiry);
+                expDate.setHours(0,0,0,0);
+                const diffTime = expDate - today;
+                const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+                if (diffDays <= 1) {
+                    expiringSoonItems.push({ name: item.name, days: diffDays });
+                }
+            });
+
+            const badgeCountEl = document.getElementById('expiry-badge-count');
+            const homeAlertBox = document.getElementById('home-expiry-alert-box');
+            const homeAlertText = document.getElementById('home-expiry-alert-text');
+
+            if (expiringSoonItems.length > 0) {
+                badgeCountEl.innerText = expiringSoonItems.length;
+                badgeCountEl.classList.remove('hidden');
+
+                homeAlertBox.classList.remove('hidden');
+                const namesList = expiringSoonItems.map(i => `<strong>${i.name}</strong> (${i.days === 1 ? '1 hari lagi' : i.days === 0 ? 'Hari ini!' : 'Sudah lewat'})`).join(', ');
+                homeAlertText.innerHTML = `Perhatian! Bahan berikut mendekati/sudah masa kadaluarsa: ${namesList}. Yuk segera diolah dengan menu Resep Kepepet!`;
+
+                showToast(`Peringatan: ${expiringSoonItems.length} bahan pantry akan/sudah kadaluarsa!`, 'error');
+            } else {
+                badgeCountEl.classList.add('hidden');
+                homeAlertBox.classList.add('hidden');
+            }
+        }
+
+        function openUserModal() {
+            document.getElementById('modal-users').classList.remove('hidden');
+            renderUsersList();
+        }
+        function closeUserModal() {
+            document.getElementById('modal-users').classList.add('hidden');
+        }
+
+        function handleCreateUser(e) {
+            e.preventDefault();
+            const name = document.getElementById('new-user-name').value.trim();
+            const room = document.getElementById('new-user-room').value.trim();
+            const username = document.getElementById('new-user-username').value.trim();
+            const pass = document.getElementById('new-user-password').value.trim();
+
+            const newUser = { id: 'u_' + Date.now(), name, room, username, password: pass, role: 'tenant' };
+            usersList.push(newUser);
+            showToast(`Akun untuk ${name} (${room}) berhasil dibuat!`, 'success');
+            e.target.reset();
+            renderUsersList();
+        }
+
+        function renderUsersList() {
+            const container = document.getElementById('users-list-container');
+            if(!container) return;
+            container.innerHTML = '';
+            usersList.forEach(u => {
+                const item = document.createElement('div');
+                item.className = 'bg-white p-3 rounded-xl border border-slate-200 flex justify-between items-center text-xs';
+                item.innerHTML = `
+                    <div>
+                        <p class="font-bold text-slate-800">${escapeHtml(u.name)} <span class="text-brand-600 font-semibold">(${escapeHtml(u.room)})</span></p>
+                        <p class="text-slate-400">Username: <code class="bg-slate-100 px-1 rounded">${escapeHtml(u.username)}</code> | Role: ${u.role}</p>
+                    </div>
+                    ${u.role !== 'admin' ? `<button onclick="deleteUser('${u.id}')" class="text-rose-500 hover:text-rose-700 px-2 py-1"><i class="fa-solid fa-trash"></i></button>` : ''}
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        function deleteUser(id) {
+            usersList = usersList.filter(x => x.id !== id);
+            showToast('Akun penghuni dihapus.', 'success');
+            renderUsersList();
+        }
+
+        function openAddItemModal() { document.getElementById('modal-item').classList.remove('hidden'); }
+        function closeModal(modalId) { document.getElementById(modalId).classList.add('hidden'); }
+
+        function handleSaveItem(e) {
+            e.preventDefault();
+            const name = document.getElementById('item-name').value.trim();
+            const qty = parseInt(document.getElementById('item-qty').value);
+            const unit = document.getElementById('item-unit').value.trim();
+            const expiry = document.getElementById('item-expiry').value;
+
+            pantryItems.push({ id: 'p_' + Date.now(), name, qty, unit, expiry });
+            showToast('Bahan berhasil ditambahkan ke pantry!', 'success');
+            closeModal('modal-item');
+            e.target.reset();
+            renderPantryGrid();
+            renderExpiryGrid();
+            renderRecipeCheckboxes();
+            checkExpiryNotifications();
+        }
+
+        function renderPantryGrid() {
+            const grid = document.getElementById('pantry-grid');
+            grid.innerHTML = '';
+            if (pantryItems.length === 0) {
+                grid.innerHTML = `<p class="text-xs text-slate-400 col-span-full text-center py-6">Stok pantry kosong.</p>`;
+                return;
+            }
+            pantryItems.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'bg-white border border-slate-200 p-4 rounded-2xl flex justify-between items-center shadow-sm';
+                card.innerHTML = `
+                    <div>
+                        <h4 class="font-bold text-slate-800 text-sm">${escapeHtml(item.name)}</h4>
+                        <p class="text-xs text-slate-500 mt-0.5">Jumlah: <strong>${item.qty} ${escapeHtml(item.unit)}</strong></p>
+                        <p class="text-[10px] text-slate-400 mt-1">Exp: ${item.expiry}</p>
+                    </div>
+                    <button onclick="deletePantryItem('${item.id}')" class="text-rose-500 hover:text-rose-700 text-xs px-2.5 py-1.5 bg-rose-50 rounded-xl">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function deletePantryItem(id) {
+            pantryItems = pantryItems.filter(x => x.id !== id);
+            renderPantryGrid();
+            renderExpiryGrid();
+            renderRecipeCheckboxes();
+            checkExpiryNotifications();
+            showToast('Bahan dihapus dari pantry.', 'info');
+        }
+
+        function renderExpiryGrid() {
+            const grid = document.getElementById('expiry-grid');
+            grid.innerHTML = '';
+            const today = new Date();
+            today.setHours(0,0,0,0);
+
+            pantryItems.forEach(item => {
+                const expDate = new Date(item.expiry);
+                expDate.setHours(0,0,0,0);
+                const diffTime = expDate - today;
+                const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+                let badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-200';
+                let statusText = `Aman (${diffDays} hari lagi)`;
+                
+                if (diffDays < 0) {
+                    badgeColor = 'bg-rose-100 text-rose-800 border-rose-200 animate-pulse';
+                    statusText = 'Sudah Kadaluarsa!';
+                } else if (diffDays === 1) {
+                    badgeColor = 'bg-rose-100 text-rose-800 border-rose-200 animate-pulse font-bold';
+                    statusText = '⚠️ PERINGATAN: 1 Hari Lagi Expired!';
+                } else if (diffDays <= 3) {
+                    badgeColor = 'bg-amber-100 text-amber-800 border-amber-200';
+                    statusText = `Segera Kadaluarsa (${diffDays} hari lagi)`;
+                }
+
+                const card = document.createElement('div');
+                card.className = `border p-4 rounded-2xl flex flex-col justify-between shadow-sm bg-white ${diffDays === 1 || diffDays <= 0 ? 'border-rose-300 ring-1 ring-rose-300' : 'border-slate-200'}`;
+                card.innerHTML = `
+                    <div>
+                        <div class="flex justify-between items-start mb-2">
+                            <h4 class="font-bold text-slate-800 text-sm">${escapeHtml(item.name)}</h4>
+                            <span class="text-[10px] font-semibold px-2.5 py-1 rounded-full border ${badgeColor}">${statusText}</span>
+                        </div>
+                        <p class="text-xs text-slate-500">Stok: <strong>${item.qty} ${escapeHtml(item.unit)}</strong></p>
+                        <p class="text-xs text-slate-400 mt-1">Tanggal Exp: ${item.expiry}</p>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function renderRecipeCheckboxes() {
+            const container = document.getElementById('recipe-ingredient-checkboxes');
+            container.innerHTML = '';
+            pantryItems.forEach(item => {
+                const label = document.createElement('label');
+                label.className = 'bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-xs flex items-center gap-2 cursor-pointer hover:bg-brand-50';
+                label.innerHTML = `
+                    <input type="checkbox" value="${item.name.toLowerCase()}" class="recipe-cb rounded text-brand-600 focus:ring-brand-500">
+                    <span class="font-semibold text-slate-700">${escapeHtml(item.name)}</span>
+                `;
+                container.appendChild(label);
+            });
+        }
+
+        function generateRecipe() {
+            const checked = Array.from(document.querySelectorAll('.recipe-cb:checked')).map(cb => cb.value);
+            const resultDiv = document.getElementById('recipe-result');
+            resultDiv.innerHTML = '';
+
+            if (checked.length === 0) {
+                showToast('Pilih minimal satu bahan di pantry!', 'error');
+                return;
+            }
+
+            confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
+            
+            const recipes = [
+                { title: 'Nasi Goreng Kepepet Kost', desc: 'Cocok untuk sarapan cepat atau malam hari. Tumis bawang, cabai, telur, dan sisa nasi semalam.', time: '10 Menit' },
+                { title: 'Telur Dadar Rempah Kilat', desc: 'Kocok telur dengan irisan cabai dan bawang, goreng garing dengan sedikit minyak.', time: '5 Menit' },
+                { title: 'Tumis Kilat Bahan Pantry', desc: 'Tumis seluruh bahan tersisa dengan garam dan sedikit penyedap rasa ala anak kost.', time: '7 Menit' }
+            ];
+
+            recipes.forEach(r => {
+                const card = document.createElement('div');
+                card.className = 'bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-2';
+                card.innerHTML = `
+                    <span class="text-[10px] bg-brand-100 text-brand-700 font-semibold px-2.5 py-0.5 rounded-full"><i class="fa-solid fa-clock mr-1"></i> ${r.time}</span>
+                    <h4 class="font-bold text-slate-800 text-sm">${r.title}</h4>
+                    <p class="text-xs text-slate-600 leading-relaxed">${r.desc}</p>
+                `;
+                resultDiv.appendChild(card);
+            });
+        }
+
+        function openAddExpenseModal() { document.getElementById('modal-expense').classList.remove('hidden'); }
+        function handleSaveExpense(e) {
+            e.preventDefault();
+            const title = document.getElementById('exp-title').value.trim();
+            const amount = parseInt(document.getElementById('exp-amount').value);
+            const buyer = document.getElementById('exp-buyer').value.trim();
+
+            expenses.push({ id: 'e_' + Date.now(), title, amount, buyer });
+            showToast('Nota belanja patungan berhasil dicatat!', 'success');
+            closeModal('modal-expense');
+            e.target.reset();
+            renderExpenseList();
+        }
+
+        function renderExpenseList() {
+            const list = document.getElementById('expense-list');
+            const summary = document.getElementById('expense-summary');
+            list.innerHTML = '';
+
+            let total = expenses.reduce((sum, item) => sum + item.amount, 0);
+            const perPerson = Math.round(total / usersList.filter(u=>u.role==='tenant').length);
+
+            summary.innerHTML = `
+                <div>
+                    <p class="font-bold text-sm">Total Belanja Dapur: Rp ${total.toLocaleString('id-ID')}</p>
+                    <p class="text-[11px] text-brand-700 mt-0.5">Estimasi patungan per anak kost (${usersList.filter(u=>u.role==='tenant').length} orang): <strong>Rp ${perPerson.toLocaleString('id-ID')} / orang</strong></p>
+                </div>
+            `;
+
+            expenses.forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'bg-slate-50 p-3.5 rounded-2xl border border-slate-200 flex justify-between items-center text-xs';
+                row.innerHTML = `
+                    <div>
+                        <p class="font-bold text-slate-800">${escapeHtml(item.title)}</p>
+                        <p class="text-slate-400">Dibeli oleh: ${escapeHtml(item.buyer)}</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="font-bold text-brand-700">Rp ${item.amount.toLocaleString('id-ID')}</span>
+                        <button onclick="deleteExpense('${item.id}')" class="text-rose-500 hover:text-rose-700"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                `;
+                list.appendChild(row);
+            });
+        }
+
+        function deleteExpense(id) {
+            expenses = expenses.filter(x => x.id !== id);
+            renderExpenseList();
+            showToast('Nota belanja dihapus.', 'info');
+        }
+
+        function openAddPicketModal() { document.getElementById('modal-picket').classList.remove('hidden'); }
+        function handleSavePicket(e) {
+            e.preventDefault();
+            const task = document.getElementById('pick-task').value.trim();
+            const assignee = document.getElementById('pick-assignee').value.trim();
+            const day = document.getElementById('pick-day').value;
+
+            pickets.push({ id: 'pk_' + Date.now(), task, assignee, day, status: 'Pending' });
+            showToast('Tugas piket berhasil ditambahkan!', 'success');
+            closeModal('modal-picket');
+            e.target.reset();
+            renderPicketGrid();
+        }
+
+        function renderPicketGrid() {
+            const grid = document.getElementById('picket-grid');
+            grid.innerHTML = '';
+            pickets.forEach(p => {
+                const card = document.createElement('div');
+                card.className = 'bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between space-y-3';
+                card.innerHTML = `
+                    <div>
+                        <div class="flex justify-between items-start mb-2">
+                            <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-brand-100 text-brand-700">${p.day}</span>
+                            <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full ${p.status === 'Selesai' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">${p.status}</span>
+                        </div>
+                        <h4 class="font-bold text-slate-800 text-sm">${escapeHtml(p.task)}</h4>
+                        <p class="text-xs text-slate-500 mt-1"><i class="fa-solid fa-user-tag mr-1"></i> Penanggung Jawab: <strong>${escapeHtml(p.assignee)}</strong></p>
+                    </div>
+                    <div class="flex justify-between items-center pt-2 border-t border-slate-100 text-xs">
+                        <button onclick="togglePicketStatus('${p.id}')" class="text-brand-600 font-semibold hover:underline">
+                            <i class="fa-solid fa-check mr-1"></i> Ubah Status
+                        </button>
+                        <button onclick="deletePicket('${p.id}')" class="text-rose-500 hover:text-rose-700">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function togglePicketStatus(id) {
+            const p = pickets.find(x => x.id === id);
+            if (p) {
+                p.status = p.status === 'Pending' ? 'Selesai' : 'Pending';
+                renderPicketGrid();
+                showToast('Status piket diperbarui.', 'success');
+            }
+        }
+
+        function deletePicket(id) {
+            pickets = pickets.filter(x => x.id !== id);
+            renderPicketGrid();
+            showToast('Tugas piket dihapus.', 'info');
+        }
+
+        function escapeHtml(str) {
+            return str ? str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;") : '';
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `${type === 'success' ? 'bg-emerald-600' : type === 'error' ? 'bg-rose-600' : 'bg-slate-800'} text-white px-4 py-2.5 rounded-xl text-xs font-semibold shadow-lg transition-all animate-bounce`;
+            toast.innerText = message;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
+        }
+    </script>
+</body>
+</html>
